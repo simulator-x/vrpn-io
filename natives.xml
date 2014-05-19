@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<NativeLibraries>
+	<Linux32><Path>lib/vrpn/native</Path></Linux32>
+	<Linux64><Path>lib/vrpn/native/linux64</Path></Linux64>
+	<MacOSX><Path>lib/vrpn/native</Path></MacOSX>
+	<Win32><Path>lib/vrpn/native</Path></Win32>
+	<Win64><Path>lib/vrpn/native/win64</Path></Win64>
+</NativeLibraries>
