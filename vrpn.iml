@@ -2,7 +2,9 @@
 <module type="JAVA_MODULE" version="4">
   <component name="FacetManager">
     <facet type="scala" name="Scala">
-      <configuration />
+      <configuration>
+        <option name="languageLevel" value="Scala 2.11" />
+      </configuration>
     </facet>
   </component>
   <component name="NewModuleRootManager" inherit-compiler-output="false">

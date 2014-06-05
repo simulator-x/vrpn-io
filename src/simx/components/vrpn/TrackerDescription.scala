@@ -32,10 +32,12 @@ import devices.TrackingTarget
 import simx.core.component.ComponentDoesNotExistException
 import simx.core.entity.Entity
 import simx.core.ontology.{types => gt}
-import simx.core.svaractor.{SVarActor, SVar}
+import simx.core.svaractor.{StateParticle, SVarActor}
 import simx.core.entity.component.EntityCreationHandling
 import simx.core.ontology.EntityDescription
 import simplex3d.math.floatx.{Vec3f, Mat4x3f, ConstMat4f, functions}
+import simx.core.svaractor.unifiedaccess.EntityUpdateHandling
+import simx.core.worldinterface.WorldInterfaceHandling
 
 /**
  *
@@ -84,18 +86,18 @@ class TrackerDescription(descFile: File)(implicit creationContext : EntityCreati
    *
    * @param to    The svar to write the data into.
    */
-  def propagateDisplayCoordinates(from: String, to: SVar[gt.Transformation.dataType])
-                                 (implicit actorContext : SVarActor){
+  def propagateDisplayCoordinates(from: String, to: StateParticle[gt.Transformation.dataType])
+                                 (implicit actorContext : WorldInterfaceHandling with EntityUpdateHandling){
     targetEntities.get(from).collect{case targetEntity: Entity =>
-      val targetSvar = targetEntity.get(VRPN.oriAndPos).head
+      val targetSvar = (h : ConstMat4f => Any) => targetEntity.observe(VRPN.oriAndPos).first(h)
       addTransformationProperagtion(targetSvar, to, trackerToDisplay)
     }
   }
 
-  private def addTransformationProperagtion(source: SVar[gt.Transformation.dataType],
-                                            sink: SVar[gt.Transformation.dataType],
+  private def addTransformationProperagtion(source: (ConstMat4f => Any) => Any,
+                                            sink: StateParticle[gt.Transformation.dataType],
                                             sourceToSinkTransform: ConstMat4f)(implicit self : SVarActor) {
-    source.observe((srcTrans) => {sink.set(removeScale( functions.inverse(sourceToSinkTransform) * srcTrans) ) })
+    source.apply(srcTrans => sink.set(removeScale( functions.inverse(sourceToSinkTransform) * srcTrans) ) )
   }
 
   private def removeScale( mat : ConstMat4f ) : ConstMat4f = {

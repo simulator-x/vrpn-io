@@ -27,6 +27,7 @@ import vrpn.TextReceiver
 
 import scala.collection.immutable.HashSet
 import scala.collection.mutable
+import simx.core.ontology.GroundedSymbol
 
 
 /* author: dwiebusch
@@ -130,11 +131,11 @@ object VRPNFactory{
   /**
    *  map for functions to create vrpnlisteners using a given handling function
    */
-  private val listenerMappings = new mutable.HashMap[Symbol, ((Any,Any) => Unit) => VRPNListener]
+  private val listenerMappings = new mutable.HashMap[GroundedSymbol, ((Any,Any) => Unit) => VRPNListener]
   /**
    *  map for functions to create clients using the given url
    */
-  private val clientMappings = new mutable.HashMap[Symbol, InstanciableVRPNObject]
+  private val clientMappings = new mutable.HashMap[GroundedSymbol, InstanciableVRPNObject]
 
   /*
    * add supported types
@@ -144,17 +145,17 @@ object VRPNFactory{
    * VRPN Listeners) and returns a VRPNListener (normally this should be a call to the Listeners constructor, passing
    * the handling function)
    */
-  addType( VRPN.orientation.sVarIdentifier, VRPNTrackerClient, new TrackerListener(_) ) //';
-  addType( VRPN.oriAndPos.sVarIdentifier, VRPNTrackerClient, new TrackerListener(_) )   //';
-  addType( VRPN.position.sVarIdentifier, VRPNTrackerClient, new TrackerListener(_) )    //';
-  addType( VRPN.button.sVarIdentifier, VRPNButtonClient, new ButtonListener(_) )        //';
-  addType( VRPN.text.sVarIdentifier, VRPNTextReceiver, new TextListener(_) )            //';
-  addType( VRPN.analog.sVarIdentifier, VRPNAnalogReceiver, new AnalogListener( _ ) )
+  addType( VRPN.orientation.semantics, VRPNTrackerClient, new TrackerListener(_) ) //';
+  addType( VRPN.oriAndPos.semantics, VRPNTrackerClient, new TrackerListener(_) )   //';
+  addType( VRPN.position.semantics, VRPNTrackerClient, new TrackerListener(_) )    //';
+  addType( VRPN.button.semantics, VRPNButtonClient, new ButtonListener(_) )        //';
+  addType( VRPN.text.semantics, VRPNTextReceiver, new TextListener(_) )            //';
+  addType( VRPN.analog.semantics, VRPNAnalogReceiver, new AnalogListener( _ ) )
 
   /**
    *  short form for adding a new client/listener pair to the maps
    */
-  def addType( typ : Symbol,
+  def addType( typ : GroundedSymbol,
                clientCreateFunc : InstanciableVRPNObject,
                listenerCreateFunc : ((Any,Any) => Unit) => VRPNListener) {
     clientMappings    += typ -> clientCreateFunc
@@ -169,7 +170,7 @@ object VRPNFactory{
   *
   * @return Some(client) if successful, None otherwise
   */
-  def createClient(sym : Symbol , url : String, rateInMillis : Long = 16L) : Option[VRPNClient] = {
+  def createClient(sym : GroundedSymbol , url : String, rateInMillis : Long = 16L) : Option[VRPNClient] = {
     //get the factory function
     clientMappings.get(sym) match {
     //if there is none, we have to print an error
@@ -180,7 +181,7 @@ object VRPNFactory{
           return Some( vrpnobject.getInstance(url, rateInMillis) )
         } catch {
           //if the call fails, we have to tell so
-          case _ : Throwable  => { println("Unknown error while creating client of type " + sym.toString + " with connection to " + url )  }
+          case _ : Throwable  => println("Unknown error while creating client of type " + sym.toString + " with connection to " + url )
         }
     }
     //if we got here, there was a problem and therefore we have to return None
@@ -195,7 +196,7 @@ object VRPNFactory{
   *
   * @return Some(listener) if successful, None otherwise
   */
-  def createListener(sym : Symbol, func : (Any, Any) => Unit) : Option[VRPNListener] = {
+  def createListener(sym : GroundedSymbol, func : (Any, Any) => Unit) : Option[VRPNListener] = {
     //we look for the required listener factory function ...
     listenerMappings.get(sym) match {
     // ... and call it if it exists ...
