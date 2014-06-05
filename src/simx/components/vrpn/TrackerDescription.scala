@@ -94,7 +94,7 @@ class TrackerDescription(descFile: File)(implicit creationContext : EntityCreati
     }
   }
 
-  private def addTransformationProperagtion(source: (ConstMat4f => Any) => Unit,
+  private def addTransformationProperagtion(source: (ConstMat4f => Any) => Any,
                                             sink: StateParticle[gt.Transformation.dataType],
                                             sourceToSinkTransform: ConstMat4f)(implicit self : SVarActor) {
     source.apply(srcTrans => sink.set(removeScale( functions.inverse(sourceToSinkTransform) * srcTrans) ) )
