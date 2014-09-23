@@ -20,6 +20,7 @@
 
 package simx.components.vrpn
 
+import simplex3d.math.floatx.ConstVec2f
 import simx.core.svaractor._
 import simx.core.entity.Entity
 import simx.core.component.Component
@@ -154,7 +155,7 @@ class VRPNConnector(name : Symbol = 'vrpnconnector ) extends Component(name, Sym
     msg match {
       case msg : AnalogRemote#AnalogUpdate =>
         timeStampSVar.collect{ case t => t.set(msg.msg_time.getTime) }
-        oval.set( msg.channel( Integer.parseInt( semantics.name ) ).asInstanceOf[T] )
+        oval.set( ConstVec2f(msg.channel( 0 ).toFloat, msg.channel( 1 ).toFloat).asInstanceOf[T] )
       case _ =>  println("ERROR: handleAnalog got something that was not an array of analog data")
     }
   }
@@ -206,6 +207,8 @@ class VRPNConnector(name : Symbol = 'vrpnconnector ) extends Component(name, Sym
         aspect.getCreateParams.toSValSeq.find(_.typedSemantics.getBase == types.Boolean.getBase).collect{
           case key => connectSVar(key.typedSemantics, e, aspect, Some(Symbols.button))
         }
+      case Symbols.analogInput =>
+        connectSVar(VRPN.analog, e, aspect)
       case something =>
         println("VRPN: unsupported parameter " + something.toString)
     }
@@ -222,11 +225,14 @@ class VRPNConnector(name : Symbol = 'vrpnconnector ) extends Component(name, Sym
           case something      => set
         }
       }
+      case Symbols.analogInput =>
+        retVal += VRPN.analog(ConstVec2f(0,0))
     })
   }
 
   private def connectSVar[T : ClassTag]( c : TypeInfo[T,T], e : Entity, aspect : EntityAspect,
                               typ : Option[GroundedSymbol] = None, id : Option[Symbol] = None) {
+    println("C: " + c)
     val url = aspect.getCreateParams.getFirstValueFor(VRPN.url).getOrElse(throw new Exception("url missing"))
     val sem = id.getOrElse(aspect.getCreateParams.getFirstValueFor(VRPN.id).getOrElse(throw new Exception("sem missing")))
     val updateRate = aspect.getCreateParams.getFirstValueForOrElse(VRPN.updateRateInMillis)(16L)

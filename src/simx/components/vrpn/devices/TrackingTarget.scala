@@ -22,6 +22,7 @@ package simx.components.vrpn.devices
 
 import simx.components.vrpn.VRPN
 import simx.core.ontology.{EntityDescription, Symbols}
+import simx.core.worldinterface.naming.NameIt
 
 /**
  * @author dwiebusch
@@ -29,8 +30,8 @@ import simx.core.ontology.{EntityDescription, Symbols}
  * Time: 11:03
  */
 
-case class TrackingTarget(url : String, id : Symbol) extends VRPNAspect(Symbols.trackingTarget){
-  def getCreateParams = addCVars{ Set(VRPN.id.apply(id), VRPN.url.apply(url), VRPN.timestamp(-1)) }
+case class TrackingTarget(url : String, id : Symbol, updateRate : Long = 16) extends VRPNAspect(Symbols.trackingTarget){
+  def getCreateParams = addCVars{ Set(VRPN.id.apply(id), VRPN.url.apply(url), VRPN.timestamp(-1), VRPN.updateRateInMillis(updateRate)) }
   def getFeatures               = Set(VRPN.oriAndPos, VRPN.url, VRPN.id, VRPN.timestamp)
   def getProvidings             = getFeatures
 }
@@ -41,6 +42,8 @@ case class SimpleTarget(url : String, id : Symbol ) {
 //  }
 
   val desc = new EntityDescription(
-    TrackingTarget(url, id)
+    TrackingTarget(url, id),
+    NameIt("Target_" + url)
+
   )
 }

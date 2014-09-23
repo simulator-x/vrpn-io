@@ -89,7 +89,7 @@ class TrackerDescription(descFile: File)(implicit creationContext : EntityCreati
   def propagateDisplayCoordinates(from: String, to: StateParticle[gt.Transformation.dataType])
                                  (implicit actorContext : WorldInterfaceHandling with EntityUpdateHandling){
     targetEntities.get(from).collect{case targetEntity: Entity =>
-      val targetSvar = (h : ConstMat4f => Any) => targetEntity.observe(VRPN.oriAndPos).first(h)
+      val targetSvar = (h : ConstMat4f => Any) => targetEntity.observe(VRPN.oriAndPos).head(h)
       addTransformationProperagtion(targetSvar, to, trackerToDisplay)
     }
   }

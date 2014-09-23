@@ -32,7 +32,7 @@ object VRPN{
   val orientation = types.Transformation as Symbols.orientation
   val oriAndPos   = types.Transformation
   val text        = types.String
-  val analog      = types.Real as Symbols.analogInput
+  val analog      = types.Vector2 as Symbols.analogInput
   val timestamp   = types.Time
 
   val url = types.String as Symbols.uRL
