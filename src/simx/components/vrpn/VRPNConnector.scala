@@ -26,8 +26,9 @@ import simx.core.entity.Entity
 import simx.core.component.Component
 import simx.core.entity.description._
 import simx.core.ontology.{GroundedSymbol, Symbols, types}
+import simx.core.svaractor.semantictrait.base.GroundedSymbolBase
 import vrpn.{AnalogRemote, TextReceiver, ButtonRemote, TrackerRemote}
-import simx.core.entity.typeconversion.{TypeInfo, ConvertibleTrait}
+import simx.core.entity.typeconversion.ConvertibleTrait
 import simx.core.entity.component.{ComponentAspect, EntityConfigLayer}
 import simplex3d.math.float.{Vec3, Mat4x3, ConstMat4, Mat4}
 import scala.reflect.ClassTag
@@ -75,7 +76,7 @@ class VRPNConnector(name : Symbol = 'vrpnconnector ) extends Component(name, Sym
     super.shutdown()
   }
 
-  def createHandle[T]( typ : GroundedSymbol, semantics : Symbol,  oval : StateParticle[T],
+  def createHandle[T]( typ : GroundedSymbolBase[_], semantics : Symbol,  oval : StateParticle[T],
                        timeStampSVar : Option[TSSVar] = None ) : Option[ (Any, Any) => Unit ] =
     typ match {
       case VRPN.text.semantics         => Some(handleText(semantics, oval, timeStampSVar) )
@@ -200,56 +201,58 @@ class VRPNConnector(name : Symbol = 'vrpnconnector ) extends Component(name, Sym
   }
 
   override protected def entityConfigComplete(e: Entity, aspect: EntityAspect) {
-    aspect.getCreateParams.semantics match {
-      case Symbols.trackingTarget =>
+    aspect.getCreateParams.semantics.Symbol match {
+      case Symbols.trackingTarget.Symbol =>
         connectSVar(VRPN.oriAndPos, e, aspect)
-      case Symbols.button =>
+      case Symbols.button.Symbol =>
         aspect.getCreateParams.toSValSeq.find(_.typedSemantics.getBase == types.Boolean.getBase).collect{
-          case key => connectSVar(key.typedSemantics, e, aspect, Some(Symbols.button))
+          case key => connectSVar(key.typedSemantics.asConvertibleTrait, e, aspect, Some(Symbols.button))
         }
-      case Symbols.analogInput =>
+      case Symbols.analogInput.Symbol =>
         connectSVar(VRPN.analog, e, aspect)
+      case VRPN.text.semantics =>
+        connectSVar(VRPN.text, e, aspect)
       case something =>
         println("VRPN: unsupported parameter " + something.toString)
     }
   }
 
   override protected def requestInitialValues(toProvide: Set[ConvertibleTrait[_]], aspect: EntityAspect,
-                                          e: Entity, given: SValSet) {
+                                              e: Entity, given: SValSet) {
     val (retVal, remaining) = aspect.getCreateParams.combineWithValues(toProvide)
-    provideInitialValues(e, aspect.getCreateParams.semantics match {
-      case Symbols.button => retVal
-      case Symbols.trackingTarget => remaining.foldLeft(retVal){
+    provideInitialValues(e, aspect.getCreateParams.semantics.Symbol match {
+      case Symbols.button.Symbol => retVal
+      case Symbols.trackingTarget.Symbol => remaining.foldLeft(retVal){
         (set, elem) => elem match {
           case VRPN.oriAndPos => set += VRPN.oriAndPos(Mat4.Identity)
           case something      => set
         }
       }
-      case Symbols.analogInput =>
+      case Symbols.analogInput.Symbol =>
         retVal += VRPN.analog(ConstVec2f(0,0))
+      case VRPN.text.semantics =>
+        retVal
+      case _ => throw new Exception
     })
   }
 
-  private def connectSVar[T : ClassTag]( c : TypeInfo[T,T], e : Entity, aspect : EntityAspect,
-                              typ : Option[GroundedSymbol] = None, id : Option[Symbol] = None) {
-    println("C: " + c)
+  private def connectSVar[T : ClassTag]( c : ConvertibleTrait[T], e : Entity, aspect : EntityAspect,
+                                         typ : Option[GroundedSymbol] = None, id : Option[Symbol] = None) {
     val url = aspect.getCreateParams.getFirstValueFor(VRPN.url).getOrElse(throw new Exception("url missing"))
     val sem = id.getOrElse(aspect.getCreateParams.getFirstValueFor(VRPN.id).getOrElse(throw new Exception("sem missing")))
     val updateRate = aspect.getCreateParams.getFirstValueForOrElse(VRPN.updateRateInMillis)(16L)
-    val sVarIdentifier = typ.getOrElse(c.semantics)
+    val sVarIdentifier = typ.collect{case x => x.Symbol}.getOrElse(c.semantics)
     val timeStampSVar = e.getSVars(VRPN.timestamp).headOption.map(_._2)
-    e.get(c.asConvertibleTrait).forall{
-      map => VRPNFactory.createClient(sVarIdentifier, url, updateRate).collect {
-        //create handle and check if this step was successful
-        case client : VRPNClient => createHandle(sVarIdentifier, sem, map.head._2, timeStampSVar).collect{
-          //create listener and check if this step was successful
-          case handle => VRPNFactory.createListener(sVarIdentifier, handle).collect {
-            // subscribe
-            case listener => client subscribe listener
-          }.getOrElse(println("VRPN createFor: could not create handle for " + url))
-        }.getOrElse(println("VRPN createFor: could not regiser listener for " + url))
-      }.getOrElse(println("VRPN createFor: could not create client for " + url))
-    }
+    VRPNFactory.createClient(sVarIdentifier, url, updateRate).collect {
+      //create handle and check if this step was successful
+      case client : VRPNClient => createHandle(sVarIdentifier, sem, e.getSVars(c.asConvertibleTrait).head._2, timeStampSVar).collect{
+        //create listener and check if this step was successful
+        case handle => VRPNFactory.createListener(sVarIdentifier, handle).collect {
+          // subscribe
+          case listener => client subscribe listener
+        }.getOrElse(println("VRPN createFor: could not create handle for " + url))
+      }.getOrElse(println("VRPN createFor: could not regiser listener for " + url))
+    }.getOrElse(println("VRPN createFor: could not create client for " + url))
   }
 
   /*
@@ -258,7 +261,7 @@ class VRPNConnector(name : Symbol = 'vrpnconnector ) extends Component(name, Sym
   *
   * @param confParamType a List of Tuples containing the clients data type and the server url
   */
-  def configure(param: List[(GroundedSymbol, String)]) {
+  def configure(param: List[(GroundedSymbolBase[_], String)]) {
     var listener : Option[VRPNListener] = None
     for ( (listenerSymbol, url) <- param ){
       val client = VRPNFactory.createClient(listenerSymbol, url)

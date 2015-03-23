@@ -20,6 +20,7 @@
 
 package simx.components.vrpn
 
+import simx.core.svaractor.semantictrait.base.{Thing, GroundedSymbolBase}
 import vrpn.TrackerRemote
 import vrpn.AnalogRemote
 import vrpn.ButtonRemote
@@ -131,11 +132,11 @@ object VRPNFactory{
   /**
    *  map for functions to create vrpnlisteners using a given handling function
    */
-  private val listenerMappings = new mutable.HashMap[GroundedSymbol, ((Any,Any) => Unit) => VRPNListener]
+  private val listenerMappings = new mutable.HashMap[GroundedSymbolBase[_], ((Any,Any) => Unit) => VRPNListener]
   /**
    *  map for functions to create clients using the given url
    */
-  private val clientMappings = new mutable.HashMap[GroundedSymbol, InstanciableVRPNObject]
+  private val clientMappings = new mutable.HashMap[GroundedSymbolBase[_], InstanciableVRPNObject]
 
   /*
    * add supported types
@@ -155,7 +156,7 @@ object VRPNFactory{
   /**
    *  short form for adding a new client/listener pair to the maps
    */
-  def addType( typ : GroundedSymbol,
+  def addType( typ : GroundedSymbolBase[_ <: Thing],
                clientCreateFunc : InstanciableVRPNObject,
                listenerCreateFunc : ((Any,Any) => Unit) => VRPNListener) {
     clientMappings    += typ -> clientCreateFunc
@@ -170,13 +171,13 @@ object VRPNFactory{
   *
   * @return Some(client) if successful, None otherwise
   */
-  def createClient(sym : GroundedSymbol , url : String, rateInMillis : Long = 16L) : Option[VRPNClient] = {
+  def createClient(sym : GroundedSymbolBase[_] , url : String, rateInMillis : Long = 16L) : Option[VRPNClient] = {
     //get the factory function
     clientMappings.get(sym) match {
-    //if there is none, we have to print an error
+      //if there is none, we have to print an error
       case None => println("VRPN ERROR: Trying to create unknown typed client")
       case Some(vrpnobject) =>
-      //if it exists, we try to call it and return the result
+        //if it exists, we try to call it and return the result
         try {
           return Some( vrpnobject.getInstance(url, rateInMillis) )
         } catch {
@@ -196,15 +197,8 @@ object VRPNFactory{
   *
   * @return Some(listener) if successful, None otherwise
   */
-  def createListener(sym : GroundedSymbol, func : (Any, Any) => Unit) : Option[VRPNListener] = {
-    //we look for the required listener factory function ...
-    listenerMappings.get(sym) match {
-    // ... and call it if it exists ...
-      case Some(function) => Some(function(func))
-      // ... or return None if it doesn't
-      case None => None
-    }
-  }
+  def createListener(sym : GroundedSymbolBase[_], func : (Any, Any) => Unit) : Option[VRPNListener] =
+    listenerMappings.get(sym) collect { case function => function(func) }
 
   /*!
   * removes all instantiated objects and removes connections, listeners and so on.
@@ -250,14 +244,14 @@ trait InstanciableVRPNObject{
   /**
    *  create an new instance, if there is none yet
    */
-  def getInstance(url : String, rateInMillis : Long) : VRPNClient = {
-    //check for a client's existence and return it or ...
-    instances.get(url).getOrElse {
+  def getInstance(url : String, rateInMillis : Long) : VRPNClient =
+  //check for a client's existence and return it or ...
+    instances.getOrElse(url, {
       // ... create a new one and register it. return it then by tail recursion (may be not the nicest way, but looks nicer than val retVal = ... ; return retVal)
-      instances.update(url, createInstance(url, rateInMillis) )
+      instances.update(url, createInstance(url, rateInMillis))
       getInstance(url, rateInMillis)
-    }
-  }
+    })
+
   /**
    *  removes all instances
    */
@@ -319,7 +313,7 @@ trait VRPNSource[A <: VRPNListener] extends VRPNClient{
    *  unsubscribes all listeners
    */
   def cleanup() {
-    while (!listeners.isEmpty) unsubscribe(listeners.head)
+    while (listeners.nonEmpty) unsubscribe(listeners.head)
     if (!deviceStopped)
       device.stopRunning()
     deviceStopped = true

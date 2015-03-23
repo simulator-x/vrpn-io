@@ -36,13 +36,13 @@ case class TrackingTarget(url : String, id : Symbol, updateRate : Long = 16) ext
   def getProvidings             = getFeatures
 }
 
-case class SimpleTarget(url : String, id : Symbol ) {
+case class SimpleTarget(url : String, id : Symbol, updateRate : Long = 16 ) {
 //  def realize( handler : (Entity) => Unit ) {
 //    desc.realize( handler )
 //  }
 
   val desc = new EntityDescription(
-    TrackingTarget(url, id),
+    TrackingTarget(url, id, updateRate),
     NameIt("Target_" + url)
 
   )

@@ -21,6 +21,7 @@
 package simx.components.vrpn
 
 import simx.core.ontology.{Symbols, types}
+import simx.core.svaractor.semantictrait.base.BaseValueDescription
 
 /* author: dwiebusch
 * date: 23.09.2010
