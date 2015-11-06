@@ -28,7 +28,7 @@ import vrpn.TextReceiver
 
 import scala.collection.immutable.HashSet
 import scala.collection.mutable
-import simx.core.ontology.GroundedSymbol
+import simx.core.ontology.{types, GroundedSymbol}
 
 
 /* author: dwiebusch
@@ -152,6 +152,7 @@ object VRPNFactory{
   addType( VRPN.button.semantics, VRPNButtonClient, new ButtonListener(_) )        //';
   addType( VRPN.text.semantics, VRPNTextReceiver, new TextListener(_) )            //';
   addType( VRPN.analog.semantics, VRPNAnalogReceiver, new AnalogListener( _ ) )
+  addType( types.Token.semantics, VRPNTextReceiver, new TextListener( _ ) )
 
   /**
    *  short form for adding a new client/listener pair to the maps

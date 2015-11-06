@@ -20,7 +20,11 @@
 
 package simx.components.vrpn
 
+import simplex3d.math.doublex.ConstQuat4d
 import simplex3d.math.floatx.ConstVec2f
+import simx.components.vrpn.converter.Json
+import simx.core.svaractor.TimedRingBuffer.At
+import simplex3d.math.floatx.{Mat3f, ConstVec2f}
 import simx.core.svaractor._
 import simx.core.entity.Entity
 import simx.core.component.Component
@@ -30,12 +34,12 @@ import simx.core.svaractor.semantictrait.base.GroundedSymbolBase
 import vrpn.{AnalogRemote, TextReceiver, ButtonRemote, TrackerRemote}
 import simx.core.entity.typeconversion.ConvertibleTrait
 import simx.core.entity.component.{ComponentAspect, EntityConfigLayer}
-import simplex3d.math.float.{Vec3, Mat4x3, ConstMat4, Mat4}
+import simplex3d.math.float._
 import scala.reflect.ClassTag
 
-/* author: dwiebusch
-* date: 23.09.2010
-*/
+/*
+ * Created by Dennis Wiebusch and Martin Fischbach
+ */
 
 case class VRPNComponentAspect(name : Symbol) extends ComponentAspect[VRPNConnector](Symbols.vrpn, name){
   def getComponentFeatures: Set[ConvertibleTrait[_]] = Set()
@@ -76,15 +80,16 @@ class VRPNConnector(name : Symbol = 'vrpnconnector ) extends Component(name, Sym
     super.shutdown()
   }
 
-  def createHandle[T]( typ : GroundedSymbolBase[_], semantics : Symbol,  oval : StateParticle[T],
+  def createHandle[T]( e: Entity, typ : GroundedSymbolBase[_], semantics : Symbol,  oval : StateParticle[T],
                        timeStampSVar : Option[TSSVar] = None ) : Option[ (Any, Any) => Unit ] =
     typ match {
       case VRPN.text.semantics         => Some(handleText(semantics, oval, timeStampSVar) )
       case VRPN.button.semantics       => Some(handleButton(semantics, oval, timeStampSVar) )
       case VRPN.analog.semantics       => Some(handleAnalog( semantics, oval, timeStampSVar) )
       case VRPN.position.semantics     => Some(handlePosition(semantics, oval, timeStampSVar) )
-      case VRPN.oriAndPos.semantics    => Some(handleOriAndPos(semantics, oval, timeStampSVar) )
+      case VRPN.oriAndPos.semantics    => Some(handleOriAndPos(e, semantics, oval, e.getSVars(types.Position).head._2, e.getSVars(types.Orientation).head._2, timeStampSVar) )
       case VRPN.orientation.semantics  => Some(handleOrientation(semantics, oval, timeStampSVar) )
+      case types.Token.semantics       => Some(handleToken(semantics, oval, timeStampSVar))
       case _ => None
     }
 
@@ -115,15 +120,29 @@ class VRPNConnector(name : Symbol = 'vrpnconnector ) extends Component(name, Sym
   }
 
   /**
-   * standard full trackerinfo handling
+   * standard full tracker info handling
    */
-  def handleOriAndPos[T](semantics : Symbol, oval : StateParticle[T], timeStampSVar : Option[TSSVar])( msg : Any, src : Any){
+  def handleOriAndPos[T](
+    e: Entity,
+    semantics: Symbol,
+    transformationSVar: StateParticle[T],
+    positionSVar: StateParticle[ConstVec3],
+    orientationSVar: StateParticle[ConstQuat4],
+    timeStampSVar : Option[TSSVar])( msg : Any, src : Any)
+  {
     msg match {
       case msg : TrackerRemote#TrackerUpdate if Symbol(msg.sensor.toString) == semantics =>
         timeStampSVar.collect{ case t => t.set(msg.msg_time.getTime) }
-        oval.set( ConstMat4 ( quatAndPos2Mat(msg.quat, msg.pos)).asInstanceOf[T] )
+        
+        val (position, orientation, transformation) = convertOrientationAndPosition(msg.quat, msg.pos)
+        val timestamp = At(System.currentTimeMillis())
+        
+        transformationSVar.set(ConstMat4(transformation).asInstanceOf[T], timestamp)
+        positionSVar.set(position, timestamp)
+        orientationSVar.set(orientation, timestamp)
+
       case msg : TrackerRemote#TrackerUpdate =>
-      case _ => println("ERROR: handleOriAndPos got something that was no trackerupdate: " + msg)
+      case _ => println("ERROR: handleOriAndPos got something that was no TrackerUpdate: " + msg)
     }
   }
 
@@ -137,6 +156,17 @@ class VRPNConnector(name : Symbol = 'vrpnconnector ) extends Component(name, Sym
         oval.set( (msg.state == 1).asInstanceOf[T] )
       case msg : ButtonRemote#ButtonUpdate =>
       case _ => println("ERROR: handleButton got something that was no button: " + msg)
+    }
+  }
+
+  def handleToken[T](semantics : Symbol, oval : StateParticle[T], timeStampSVar : Option[TSSVar])( msg : Any, src : Any){
+    msg match {
+      case msg : TextReceiver#TextMessage =>
+        val timestamp = msg.msg_time.getTime
+        val data = Json.parseSpeechRecognitionResult(msg.msg)
+        timeStampSVar.collect{ case t => t.set(timestamp) }
+        oval.set( data.asInstanceOf[T], At(System.currentTimeMillis()) )
+      case _ => println("ERROR: handleText got something that was no TextMessage")
     }
   }
 
@@ -176,28 +206,38 @@ class VRPNConnector(name : Symbol = 'vrpnconnector ) extends Component(name, Sym
   /**
    *  creates a 4x4 matrix-representation of the given quaternion
    */
-  def quat2Mat[A]( quat : Array[Double] ) : ConstMat4 = {
+  private def quat2Mat[A]( quat : Array[Double] ) : ConstMat4 = {
     val (qx , qy , qz , qw)  = (quat(0).toFloat, quat(1).toFloat, quat(2).toFloat, quat(3).toFloat)
-    val (qx2, qy2, qz2, _) = (qx*qx, qy*qy, qz*qz, qw*qw)
-    ConstMat4(
-      1 - 2*qy2 - 2*qz2, 2*qx*qy - 2*qz*qw, 2*qx*qz + 2*qy*qw, 0,
-      2*qx*qy + 2*qz*qw, 1 - 2*qx2 - 2*qz2, 2*qy*qz - 2*qx*qw, 0,
-      2*qx*qz - 2*qy*qw, 2*qy*qz + 2*qx*qw, 1 - 2*qx2 - 2*qy2, 0,
-      0,                   0,                   0,                   1
-    )
+//    val (qx2, qy2, qz2, _) = (qx*qx, qy*qy, qz*qz, qw*qw)
+//    ConstMat4(
+//      1 - 2*qy2 - 2*qz2, 2*qx*qy - 2*qz*qw, 2*qx*qz + 2*qy*qw, 0,
+//      2*qx*qy + 2*qz*qw, 1 - 2*qx2 - 2*qz2, 2*qy*qz - 2*qx*qw, 0,
+//      2*qx*qz - 2*qy*qw, 2*qy*qz + 2*qx*qw, 1 - 2*qx2 - 2*qy2, 0,
+//      0,                   0,                   0,                   1
+//    )
+
+    val q = ConstQuat4(qw, qx, qy, qz)
+    val rotation = simplex3d.math.float.functions.rotationMat(q)
+    ConstMat4(rotation)
   }
   /**
    * creates a combined matrix with quaternion and position information
    */
-  def quatAndPos2Mat( quat : Array[Double], pos : Array[Double]) : ConstMat4 = {
+  private def convertOrientationAndPosition(quat : Array[Double], pos : Array[Double]): (ConstVec3, ConstQuat4, ConstMat4) = {
     val (qx , qy , qz , qw)  = (quat(0).toFloat, quat(1).toFloat, quat(2).toFloat, quat(3).toFloat)
-    val (qx2, qy2, qz2, _) = (qx*qx, qy*qy, qz*qz, qw*qw)
-    ConstMat4(
-      1 - 2*qy2 - 2*qz2, 2*qx*qy - 2*qz*qw, 2*qx*qz + 2*qy*qw, 0,
-      2*qx*qy + 2*qz*qw, 1 - 2*qx2 - 2*qz2, 2*qy*qz - 2*qx*qw, 0,
-      2*qx*qz - 2*qy*qw, 2*qy*qz + 2*qx*qw, 1 - 2*qx2 - 2*qy2, 0,
-      pos(0).toFloat,      pos(1).toFloat,      pos(2).toFloat,      1
-    )
+//    val (qx2, qy2, qz2, _) = (qx*qx, qy*qy, qz*qz, qw*qw)
+//    ConstMat4(
+//      1 - 2*qy2 - 2*qz2, 2*qx*qy - 2*qz*qw, 2*qx*qz + 2*qy*qw, 0,
+//      2*qx*qy + 2*qz*qw, 1 - 2*qx2 - 2*qz2, 2*qy*qz - 2*qx*qw, 0,
+//      2*qx*qz - 2*qy*qw, 2*qy*qz + 2*qx*qw, 1 - 2*qx2 - 2*qy2, 0,
+//      pos(0).toFloat,      pos(1).toFloat,      pos(2).toFloat,      1
+//    )
+
+    val orientation = ConstQuat4(qw, qx, qy, qz)
+    val rotation = simplex3d.math.float.functions.rotationMat(orientation)
+    val position = Vec4(pos(0).toFloat,      pos(1).toFloat,      pos(2).toFloat,      1)
+    val transformation = ConstMat4(Vec4(rotation(0), 0), Vec4(rotation(1), 0), Vec4(rotation(2), 0), position)
+    (position.xyz, orientation, transformation)
   }
 
   override protected def entityConfigComplete(e: Entity, aspect: EntityAspect) {
@@ -212,6 +252,8 @@ class VRPNConnector(name : Symbol = 'vrpnconnector ) extends Component(name, Sym
         connectSVar(VRPN.analog, e, aspect)
       case VRPN.text.semantics =>
         connectSVar(VRPN.text, e, aspect)
+      case types.Token.semantics =>
+        connectSVar(types.Token, e, aspect)
       case something =>
         println("VRPN: unsupported parameter " + something.toString)
     }
@@ -225,12 +267,16 @@ class VRPNConnector(name : Symbol = 'vrpnconnector ) extends Component(name, Sym
       case Symbols.trackingTarget.Symbol => remaining.foldLeft(retVal){
         (set, elem) => elem match {
           case VRPN.oriAndPos => set += VRPN.oriAndPos(Mat4.Identity)
+          case types.Position => set += types.Position(Vec3.Zero)
+          case types.Orientation => set += types.Orientation(Quat4.Identity)
           case something      => set
         }
       }
       case Symbols.analogInput.Symbol =>
         retVal += VRPN.analog(ConstVec2f(0,0))
       case VRPN.text.semantics =>
+        retVal
+      case types.Token.semantics =>
         retVal
       case _ => throw new Exception
     })
@@ -245,7 +291,7 @@ class VRPNConnector(name : Symbol = 'vrpnconnector ) extends Component(name, Sym
     val timeStampSVar = e.getSVars(VRPN.timestamp).headOption.map(_._2)
     VRPNFactory.createClient(sVarIdentifier, url, updateRate).collect {
       //create handle and check if this step was successful
-      case client : VRPNClient => createHandle(sVarIdentifier, sem, e.getSVars(c.asConvertibleTrait).head._2, timeStampSVar).collect{
+      case client : VRPNClient => createHandle(e, sVarIdentifier, sem, e.getSVars(c.asConvertibleTrait).head._2, timeStampSVar).collect{
         //create listener and check if this step was successful
         case handle => VRPNFactory.createListener(sVarIdentifier, handle).collect {
           // subscribe

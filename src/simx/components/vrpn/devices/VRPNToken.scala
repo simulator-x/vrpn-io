@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 The SIRIS Project
+ * Copyright 2015 The SIRIS Project
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -22,23 +22,26 @@ package simx.components.vrpn.devices
 
 import simx.components.vrpn.VRPN
 import simx.core.entity.description.SValSet
+import simx.core.helper.Silence
 import simx.core.ontology.{types, EntityDescription, Symbols}
 
 /**
- * @author dwiebusch
- * Date: 05.07.11
- * Time: 11:03
+ * Created by
+ * martin
+ * in September 2015.
  */
-
-case class TrackingTarget(url : String, id : Symbol, updateRate : Long = 16) extends VRPNAspect(Symbols.trackingTarget){
-  def getCreateParams = addCVars{ SValSet(VRPN.id.apply(id), VRPN.url.apply(url), VRPN.timestamp(-1), VRPN.updateRateInMillis(updateRate)) }
-  def getFeatures               = Set(VRPN.oriAndPos, VRPN.url, VRPN.id, VRPN.timestamp, types.Position, types.Orientation)
-  def getProvidings             = getFeatures
-}
-
-case class SimpleTarget(url : String, id : Symbol,  name: String = "", updateRate : Long = 16) {
-  val desc = new EntityDescription(
-    name = if(name.isEmpty) "Target_" + url else name,
-    aspects = TrackingTarget(url, id, updateRate)
+case class VRPNToken(serverIp: String) extends VRPNTarget(Symbols.token) {
+  def getCreateParams = addCVars{ SValSet(
+    types.Token(Silence()),
+    VRPN.id.apply(Symbol("0")) ,
+    VRPN.url("Speech@" + serverIp + "::3884"),
+    VRPN.timestamp(-1))
+  }
+  def getFeatures = Set(types.Token, VRPN.url, VRPN.id, VRPN.timestamp)
+  def getProvidings = getFeatures
+  def desc: EntityDescription = new EntityDescription(
+    aspects = this :: Nil,
+    name = Symbol("VrpnToken[" + serverIp + "]"),
+    additionalProperties = SValSet(types.EntityType(Symbols.token))
   )
 }
