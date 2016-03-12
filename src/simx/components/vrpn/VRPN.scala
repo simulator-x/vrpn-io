@@ -35,6 +35,7 @@ object VRPN{
   val text        = types.String
   val analog      = types.Vector2 as Symbols.analogInput
   val timestamp   = types.Time
+  val correction  = types.Typ as Symbols.name
 
   val url = types.String as Symbols.uRL
   val id = types.Identifier as Symbols.trackingTargetId

@@ -20,9 +20,11 @@
 
 package simx.components.vrpn.devices
 
+import simplex3d.math.double._
+import simplex3d.math.floatx.ConstMat4f
 import simx.components.vrpn.VRPN
 import simx.core.entity.description.SValSet
-import simx.core.ontology.{types, EntityDescription, Symbols}
+import simx.core.ontology.{GroundedSymbol, types, EntityDescription, Symbols}
 
 /**
  * @author dwiebusch
@@ -30,8 +32,15 @@ import simx.core.ontology.{types, EntityDescription, Symbols}
  * Time: 11:03
  */
 
-case class TrackingTarget(url : String, id : Symbol, updateRate : Long = 16) extends VRPNAspect(Symbols.trackingTarget){
-  def getCreateParams = addCVars{ SValSet(VRPN.id.apply(id), VRPN.url.apply(url), VRPN.timestamp(-1), VRPN.updateRateInMillis(updateRate)) }
+case class TrackingTarget(url : String, id : Symbol, updateRate : Long = 16, coordinateSystemName : Option[GroundedSymbol] = None ) extends VRPNAspect(Symbols.trackingTarget){
+  def getCreateParams = addCVars{
+    val params = SValSet(
+    VRPN.id.apply(id),
+    VRPN.url.apply(url),
+    VRPN.timestamp(-1),
+    VRPN.updateRateInMillis(updateRate))
+    if (coordinateSystemName.isDefined) params and VRPN.correction(coordinateSystemName.get) else params
+  }
   def getFeatures               = Set(VRPN.oriAndPos, VRPN.url, VRPN.id, VRPN.timestamp, types.Position, types.Orientation)
   def getProvidings             = getFeatures
 }

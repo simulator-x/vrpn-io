@@ -66,8 +66,8 @@ object KinectFAASTSkeleton_1_2 {
 
   def simpleUpperBody = getSubset(simpleUpperBodySymbols:_*)
 
-  def simpleUpperBodyUserDescription(vrpnServerUrl: String) =
-    userDescription(vrpnServerUrl, simpleUpperBodySymbols:_*)
+  def simpleUpperBodyUserDescription(vrpnServerUrl: String, csName : Option[GroundedSymbol] = None) =
+    userDescription(vrpnServerUrl, csName, simpleUpperBodySymbols:_*)
 
   @deprecated("Use KinectFAASTSkeleton_1_2.simpleUpperBodyUserDescription instead", "06-07-2015")
   def simpleUserDescription(vrpnServerUrl: String) = simpleUpperBodyUserDescription(vrpnServerUrl)
@@ -77,13 +77,13 @@ object KinectFAASTSkeleton_1_2 {
 
   def upperBody = getSubset(upperBodySymbols:_*)
 
-  def upperBodyUserDescription(vrpnServerUrl: String) =
-    userDescription(vrpnServerUrl, upperBodySymbols:_*)
+  def upperBodyUserDescription(vrpnServerUrl: String, csName : Option[GroundedSymbol] = None) =
+    userDescription(vrpnServerUrl, csName, upperBodySymbols:_*)
 
-  def userDescription(vrpnServerUrl: String, bodyPartDescriptions: GroundedSymbol*) = {
+  def userDescription(vrpnServerUrl: String, csName : Option[GroundedSymbol], bodyPartDescriptions: GroundedSymbol*) = {
     val usedParts = if(bodyPartDescriptions.nonEmpty) getSubset(bodyPartDescriptions:_*) else bodyParts
     new EntityDescription(
-      List[EntityAspect](usedParts.map(_.toDesc(vrpnServerUrl)).toSeq:_*),
+      List[EntityAspect](usedParts.map(_.toDesc(vrpnServerUrl, csName = csName, deviceName = Some(Symbols.kinect))).toSeq:_*),
       'User,
       List[Symbol](),
       Set[simx.core.ontology.Annotation](),

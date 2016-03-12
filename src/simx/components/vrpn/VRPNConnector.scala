@@ -20,11 +20,10 @@
 
 package simx.components.vrpn
 
-import simplex3d.math.doublex.ConstQuat4d
-import simplex3d.math.floatx.ConstVec2f
 import simx.components.vrpn.converter.Json
+import simx.core.ontology.referencesystems.CoordinateSystemConverter
 import simx.core.svaractor.TimedRingBuffer.At
-import simplex3d.math.floatx.{Mat3f, ConstVec2f}
+import simplex3d.math.floatx.ConstVec2f
 import simx.core.svaractor._
 import simx.core.entity.Entity
 import simx.core.component.Component
@@ -81,14 +80,14 @@ class VRPNConnector(name : Symbol = 'vrpnconnector ) extends Component(name, Sym
   }
 
   def createHandle[T]( e: Entity, typ : GroundedSymbolBase[_], semantics : Symbol,  oval : StateParticle[T],
-                       timeStampSVar : Option[TSSVar] = None ) : Option[ (Any, Any) => Unit ] =
+                       correction : Option[GroundedSymbol] = None, timeStampSVar : Option[TSSVar] = None ) : Option[ (Any, Any) => Unit ] =
     typ match {
       case VRPN.text.semantics         => Some(handleText(semantics, oval, timeStampSVar) )
       case VRPN.button.semantics       => Some(handleButton(semantics, oval, timeStampSVar) )
       case VRPN.analog.semantics       => Some(handleAnalog( semantics, oval, timeStampSVar) )
-      case VRPN.position.semantics     => Some(handlePosition(semantics, oval, timeStampSVar) )
-      case VRPN.oriAndPos.semantics    => Some(handleOriAndPos(e, semantics, oval, e.getSVars(types.Position).head._2, e.getSVars(types.Orientation).head._2, timeStampSVar) )
-      case VRPN.orientation.semantics  => Some(handleOrientation(semantics, oval, timeStampSVar) )
+      case VRPN.position.semantics     => Some(handlePosition(semantics, oval, timeStampSVar, correction.map( CoordinateSystemConverter( _ ))) )
+      case VRPN.oriAndPos.semantics    => Some(handleOriAndPos(e, semantics, oval, e.getSVars(types.Position).head._2, e.getSVars(types.Orientation).head._2, timeStampSVar, correction.map( CoordinateSystemConverter( _ ))) )
+      case VRPN.orientation.semantics  => Some(handleOrientation(semantics, oval, timeStampSVar, correction.map( CoordinateSystemConverter( _ ))) )
       case types.Token.semantics       => Some(handleToken(semantics, oval, timeStampSVar))
       case _ => None
     }
@@ -96,11 +95,14 @@ class VRPNConnector(name : Symbol = 'vrpnconnector ) extends Component(name, Sym
   /**
    * standard full trackerinfo handling
    */
-  def handlePosition[T](semantics : Symbol, oval : StateParticle[T], timeStampSVar : Option[TSSVar])( msg : Any, src : Any){
+  def handlePosition[T](semantics : Symbol, oval : StateParticle[T], timeStampSVar : Option[TSSVar], coordinateSystemName : Option[CoordinateSystemConverter[ConstMat4]])( msg : Any, src : Any){
     msg match{
       case msg : TrackerRemote#TrackerUpdate if Symbol(msg.sensor.toString) == semantics =>
         timeStampSVar.collect{ case t => t.set(msg.msg_time.getTime) }
-        oval.set( createMat(msg.pos).asInstanceOf[T] )
+        if (coordinateSystemName.isDefined)
+          oval.set( coordinateSystemName.get.toRefCoords(createMat(msg.pos)).asInstanceOf[T] )
+        else
+          oval.set( createMat(msg.pos).asInstanceOf[T] )
       case msg : TrackerRemote#TrackerUpdate =>
       case _ => println("ERROR: handlePosition got something that was no trackerupdate: " + msg)
     }
@@ -109,11 +111,14 @@ class VRPNConnector(name : Symbol = 'vrpnconnector ) extends Component(name, Sym
   /**
    * standard full trackerinfo handling
    */
-  def handleOrientation[T](semantics : Symbol, oval : StateParticle[T], timeStampSVar : Option[TSSVar])( msg : Any, src : Any){
+  def handleOrientation[T](semantics : Symbol, oval : StateParticle[T], timeStampSVar : Option[TSSVar], coordinateSystemName : Option[CoordinateSystemConverter[ConstMat4]])( msg : Any, src : Any){
     msg match {
       case msg : TrackerRemote#TrackerUpdate if Symbol(msg.sensor.toString) == semantics =>
         timeStampSVar.collect{ case t => t.set(msg.msg_time.getTime) }
-        oval.set( quat2Mat(msg.quat).asInstanceOf[T] )
+        if (coordinateSystemName.isDefined)
+          oval.set( coordinateSystemName.get.toRefCoords(quat2Mat(msg.quat)).asInstanceOf[T] )
+        else
+          oval.set( quat2Mat(msg.quat).asInstanceOf[T] )
       case msg : TrackerRemote#TrackerUpdate =>
       case _ => println("ERROR: handleOrientation got something that was no trackerupdate: " + msg)
     }
@@ -128,13 +133,14 @@ class VRPNConnector(name : Symbol = 'vrpnconnector ) extends Component(name, Sym
     transformationSVar: StateParticle[T],
     positionSVar: StateParticle[ConstVec3],
     orientationSVar: StateParticle[ConstQuat4],
-    timeStampSVar : Option[TSSVar])( msg : Any, src : Any)
+    timeStampSVar : Option[TSSVar],
+    coordinateSystemName : Option[CoordinateSystemConverter[ConstMat4]])( msg : Any, src : Any)
   {
     msg match {
       case msg : TrackerRemote#TrackerUpdate if Symbol(msg.sensor.toString) == semantics =>
         timeStampSVar.collect{ case t => t.set(msg.msg_time.getTime) }
         
-        val (position, orientation, transformation) = convertOrientationAndPosition(msg.quat, msg.pos)
+        val (position, orientation, transformation) = convertOrientationAndPosition(msg.quat, msg.pos, coordinateSystemName)
         val timestamp = At(System.currentTimeMillis())
         
         transformationSVar.set(ConstMat4(transformation).asInstanceOf[T], timestamp)
@@ -223,7 +229,7 @@ class VRPNConnector(name : Symbol = 'vrpnconnector ) extends Component(name, Sym
   /**
    * creates a combined matrix with quaternion and position information
    */
-  private def convertOrientationAndPosition(quat : Array[Double], pos : Array[Double]): (ConstVec3, ConstQuat4, ConstMat4) = {
+  private def convertOrientationAndPosition(quat : Array[Double], pos : Array[Double], converter : Option[CoordinateSystemConverter[ConstMat4]]): (ConstVec3, ConstQuat4, ConstMat4) = {
     val (qx , qy , qz , qw)  = (quat(0).toFloat, quat(1).toFloat, quat(2).toFloat, quat(3).toFloat)
 //    val (qx2, qy2, qz2, _) = (qx*qx, qy*qy, qz*qz, qw*qw)
 //    ConstMat4(
@@ -233,11 +239,17 @@ class VRPNConnector(name : Symbol = 'vrpnconnector ) extends Component(name, Sym
 //      pos(0).toFloat,      pos(1).toFloat,      pos(2).toFloat,      1
 //    )
 
-    val orientation = ConstQuat4(qw, qx, qy, qz)
-    val rotation = simplex3d.math.float.functions.rotationMat(orientation)
+    //val orientation = ConstQuat4(qw, qx, qy, qz)
+    val rotation = simplex3d.math.float.functions.rotationMat(ConstQuat4(qw, qx, qy, qz))
     val position = Vec4(pos(0).toFloat,      pos(1).toFloat,      pos(2).toFloat,      1)
     val transformation = ConstMat4(Vec4(rotation(0), 0), Vec4(rotation(1), 0), Vec4(rotation(2), 0), position)
-    (position.xyz, orientation, transformation)
+    val converted =
+      if (converter.isDefined)
+        converter.get.toRefCoords(transformation)
+      else
+        transformation
+    val orientation = functions.quaternion(Mat3(converted))
+    (converted(3).xyz, orientation, converted)
   }
 
   override protected def entityConfigComplete(e: Entity, aspect: EntityAspect) {
@@ -287,11 +299,12 @@ class VRPNConnector(name : Symbol = 'vrpnconnector ) extends Component(name, Sym
     val url = aspect.getCreateParams.getFirstValueFor(VRPN.url).getOrElse(throw new Exception("url missing"))
     val sem = id.getOrElse(aspect.getCreateParams.getFirstValueFor(VRPN.id).getOrElse(throw new Exception("sem missing")))
     val updateRate = aspect.getCreateParams.getFirstValueForOrElse(VRPN.updateRateInMillis)(16L)
+    val correction = aspect.getCreateParams.getFirstValueFor(VRPN.correction)
     val sVarIdentifier = typ.collect{case x => x.Symbol}.getOrElse(c.semantics)
     val timeStampSVar = e.getSVars(VRPN.timestamp).headOption.map(_._2)
     VRPNFactory.createClient(sVarIdentifier, url, updateRate).collect {
       //create handle and check if this step was successful
-      case client : VRPNClient => createHandle(e, sVarIdentifier, sem, e.getSVars(c.asConvertibleTrait).head._2, timeStampSVar).collect{
+      case client : VRPNClient => createHandle(e, sVarIdentifier, sem, e.getSVars(c.asConvertibleTrait).head._2, correction, timeStampSVar).collect{
         //create listener and check if this step was successful
         case handle => VRPNFactory.createListener(sVarIdentifier, handle).collect {
           // subscribe

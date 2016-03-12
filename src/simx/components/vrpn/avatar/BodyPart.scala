@@ -26,7 +26,20 @@ import simx.core.helper.chirality.Chirality
 import simx.core.ontology._
 import simx.core.svaractor.StateParticle
 
-object BodyPart{
+trait BodyPartNames{
+  val HEAD = Symbols.head
+  val SHOULDER = Symbols.shoulder
+  val SPINE = Symbols.spine
+  val HIP = Symbols.hip
+  val ELBOW = Symbols.elbow
+  val WRIST = Symbols.wrist
+  val HAND = Symbols.hand
+  val KNEE = Symbols.knee
+  val ANKLE = Symbols.ankle
+  val FOOT = Symbols.foot
+}
+
+object BodyPart extends BodyPartNames{
   def describedBy(entityType: GroundedSymbol) = BodyPartDescription(entityType)
 }
 case class BodyPartDescription(entityType: GroundedSymbol, chiralityOption: Option[Chirality] = None) {
@@ -42,12 +55,18 @@ class BodyPart(val vrpnId: Int, val subParts: Set[BodyPart], val properties: Set
   def hasSubParts(subParts: Set[BodyPart]) = new BodyPart(vrpnId, subParts.toSet, properties)
 
 
-  def toDesc(vrpnServerUrl: String): EntityDescription = new EntityDescription(
-    TrackingTarget(vrpnServerUrl, Symbol(vrpnId.toString)) :: subParts.map(_.toDesc(vrpnServerUrl)).toList,
+  def toDesc(
+    vrpnServerUrl: String,
+    updateRate : Long = 16L,
+    csName : Option[GroundedSymbol] = None,
+    deviceName : Option[GroundedSymbol] = None
+  ): EntityDescription =
+  new EntityDescription(
+    TrackingTarget(vrpnServerUrl, Symbol(vrpnId.toString), updateRate, csName) :: subParts.map(_.toDesc(vrpnServerUrl, updateRate, csName, deviceName)).toList,
     Symbol(shortName),
     List[Symbol](),
     Set[simx.core.ontology.Annotation](),
-    SValSet(properties.toSeq:_*)
+    SValSet(deviceName.map(dn => properties + types.Device(dn)).getOrElse(properties).toSeq:_*)
   )
 
   def shortName = getName(short = true)
