@@ -1,6 +1,6 @@
 libraryDependencies ++= Seq(
 	compilerPlugin("org.scala-lang.plugins" % ("scala-continuations-plugin_" + scalaVersion.value) % "1.0.2"),
-	"org.json4s" % "json4s-jackson_2.11" % "3.3.0.RC3"
+	"org.json4s" % "json4s-jackson_2.11" % "3.3.0"
 )
 
 scalaSource in Compile <<= baseDirectory(_ / "src")
